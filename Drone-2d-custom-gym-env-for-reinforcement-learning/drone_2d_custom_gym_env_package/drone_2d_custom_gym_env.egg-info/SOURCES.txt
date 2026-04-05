@@ -1,0 +1,13 @@
+MANIFEST.in
+setup.py
+drone_2d_custom_gym_env/Drone.py
+drone_2d_custom_gym_env/__init__.py
+drone_2d_custom_gym_env/drone_2d_env.py
+drone_2d_custom_gym_env/event_handler.py
+drone_2d_custom_gym_env.egg-info/PKG-INFO
+drone_2d_custom_gym_env.egg-info/SOURCES.txt
+drone_2d_custom_gym_env.egg-info/dependency_links.txt
+drone_2d_custom_gym_env.egg-info/requires.txt
+drone_2d_custom_gym_env.egg-info/top_level.txt
+drone_2d_custom_gym_env/img/icon.png
+drone_2d_custom_gym_env/img/shade.png

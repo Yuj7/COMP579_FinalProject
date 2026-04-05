@@ -1,0 +1,5 @@
+gym
+pygame
+pymunk
+numpy
+stable-baselines3[extra]
