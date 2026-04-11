@@ -24,12 +24,12 @@ class Drone2dEnv(gym.Env):
 
     def __init__(self, render_sim=False, render_path=True, render_shade=True, shade_distance=70,
                  n_steps=500, n_fall_steps=10, change_target=False, initial_throw=True,
-                 initial_force=25000, initial_rotation_force=3000):
+                 initial_force=25000, initial_rotation_force=3000,wind=None,wind_magnitude=100):
 
         self.render_sim = render_sim
         self.render_path = render_path
         self.render_shade = render_shade
-
+        
         if self.render_sim is True:
             self.init_pygame()
             self.flight_path = []
@@ -47,6 +47,8 @@ class Drone2dEnv(gym.Env):
         self.initial_force = initial_force
         self.initial_rotation_force = initial_rotation_force
         self.change_target = change_target
+        self.wind=wind
+        self.wind_mag=wind_magnitude
 
         #Initial values
         self.first_step = True
@@ -102,6 +104,29 @@ class Drone2dEnv(gym.Env):
         self.drone_radius = self.drone.drone_radius
 
     def step(self, action):
+        if self.wind== "Uniform" or "Random":
+            if self.wind== "Uniform":
+                wind_dir=random.randint(0,3)
+                if wind_dir==0: #wind blowing from up to down,apply downward wind 
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,-self.wind_mag),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,-self.wind_mag),(self.drone_radius,0))
+                if wind_dir==1: #upward wind
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,self.wind_mag),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,self.wind_mag),(self.drone_radius,0))
+                if wind_dir==2: #wind blow to left
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(-self.wind_mag,0),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(-self.wind_mag,0),(self.drone_radius,0))
+                if wind_dir==2: #wind blow to right
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(self.wind_mag,0),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(self.wind_mag,0),(self.drone_radius,0))
+            if self.wind=="Random":
+                wind_mag_x_left_engine=random.rand() *self.wind_mag*2-self.wind_mag
+                wind_mag_y_left_engine=random.rand()*self.wind_mag*2-self.wind_mag
+                wind_mag_x_right_engine=random.rand() *self.wind_mag*2-self.wind_mag
+                wind_mag_y_right_engine=random.rand()*self.wind_mag*2-self.wind_mag
+                self.drone.frame_shape.body.apply_force_at_local(Vec2d(wind_mag_x_left_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+                self.drone.frame_shape.body.apply_force_at_local(Vec2d(wind_mag_x_right_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+
         if self.first_step is True:
             if self.render_sim is True and self.render_path is True: self.add_postion_to_drop_path()
             if self.render_sim is True and self.render_shade is True: self.add_drone_shade()

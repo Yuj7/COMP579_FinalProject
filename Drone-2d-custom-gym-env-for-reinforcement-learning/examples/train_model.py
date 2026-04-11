@@ -10,10 +10,10 @@ MODEL_DIR = Path(__file__).resolve().parent / "ppo_agents"
 MODEL_DIR.mkdir(exist_ok=True)
 
 # Select the algorithm to train: ppo or sac
-ALGO = "sac"
+ALGO = "ppo"
 
 # Select the environment case to train on: 1 or 2
-CASE_ID = 2
+CASE_ID = 1
 
 TIMESTEPS = 180000
 

@@ -12,6 +12,7 @@ evaluating agents in this environment.
   <img src="media/drone_540.gif"/>
 </p>
 
+
 ## Installation
 
 These instructions will guide you through installation of the environment and
