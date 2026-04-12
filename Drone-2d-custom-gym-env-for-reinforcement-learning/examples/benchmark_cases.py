@@ -1,16 +1,19 @@
 from pathlib import Path
+from collections import Counter
 
 import gym
+import numpy as np
 from stable_baselines3 import PPO, SAC
 
 # Need it to register the custom environment
 import drone_2d_custom_gym_env
 
 MODEL_DIR = Path(__file__).resolve().parent / "ppo_agents"
+NUM_EPISODES = 100
 
 CASES = {
     1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600},
-    2: {"initial_throw": True, "initial_force": 25000, "initial_rotation_force": 3000},
+    2: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500},
 }
 
 # Point these to the saved model files
@@ -27,7 +30,7 @@ def make_env(case_id, render_sim = False):
         render_shade=True,
         shade_distance=70,
         n_steps=500,
-        n_fall_steps=10,
+        n_fall_steps=5,
         change_target=True,
         initial_throw=case["initial_throw"],
         initial_force=case["initial_force"],
@@ -43,10 +46,10 @@ def load_model(algo, case_id, env):
     raise ValueError(f"Unsupported algorithm: {algo}")
 
 
-def run_episode(model, env, render = False, continuous = False):
+def run_episode(model, env, render = False):
     obs = env.reset()
     episode_reward = 0.0
-    done = False
+    episode_steps = 0
 
     while True:
         if render:
@@ -55,15 +58,11 @@ def run_episode(model, env, render = False, continuous = False):
         action, _states = model.predict(obs, deterministic=True)
         obs, reward, done, info = env.step(action)
         episode_reward += float(reward)
+        episode_steps += 1
 
         if done:
-            if continuous:
-                obs = env.reset()
-                done = False
-            else:
-                break
-
-    return episode_reward
+            terminal_status = info.get("terminal_status")
+            return episode_reward, episode_steps, terminal_status
 
 
 if __name__ == "__main__":
@@ -72,7 +71,22 @@ if __name__ == "__main__":
             env = make_env(case_id, render_sim=False)
             try:
                 model = load_model(algo, case_id, env)
-                total_reward = run_episode(model, env, render=False)
-                print(f"algo={algo} case={case_id} total_reward={total_reward:.2f}")
+                rewards = []
+                steps = []
+                terminal_statuses = []
+
+                for _ in range(NUM_EPISODES):
+                    total_reward, episode_steps, terminal_status = run_episode(model, env, render=False)
+                    rewards.append(total_reward)
+                    steps.append(episode_steps)
+                    terminal_statuses.append(terminal_status)
+
+                status_counts = Counter(terminal_statuses)
+                success_rate = status_counts.get("success", 0) / NUM_EPISODES
+                print(
+                    f"algo={algo} case={case_id} episodes={NUM_EPISODES} "
+                    f"mean_reward={np.mean(rewards):.2f} mean_steps={np.mean(steps):.1f} "
+                    f"success_rate={success_rate:.2%} status_counts={dict(status_counts)}"
+                )
             finally:
                 env.close()

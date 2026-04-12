@@ -10,7 +10,7 @@ MODEL_DIR = Path(__file__).resolve().parent / "ppo_agents"
 MODEL_DIR.mkdir(exist_ok=True)
 
 # Select the algorithm to train: ppo or sac
-ALGO = "sac"
+ALGO = "ppo"
 
 # Select the environment case to train on: 1 or 2
 CASE_ID = 2
@@ -19,7 +19,7 @@ TIMESTEPS = 180000
 
 CASES = {
     1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600},
-    2: {"initial_throw": True, "initial_force": 25000, "initial_rotation_force": 3000},
+    2: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500},
 }
 
 
@@ -32,7 +32,7 @@ def make_env(case_id):
         render_shade=True,
         shade_distance=70,
         n_steps=500,
-        n_fall_steps=10,
+        n_fall_steps=5,
         change_target=True,
         initial_throw=case["initial_throw"],
         initial_force=case["initial_force"],
