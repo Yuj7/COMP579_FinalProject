@@ -13,7 +13,7 @@ MODEL_DIR.mkdir(exist_ok=True)
 ALGO = "ppo"
 
 # Select the environment case to train on: 1 or 2
-CASE_ID = 3
+CASE_ID = 1
 
 TIMESTEPS = 180000
 
