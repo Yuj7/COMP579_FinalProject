@@ -1,5 +1,5 @@
-from .Drone import *
-from .event_handler import *
+from drone_2d_custom_gym_env.Drone import *
+from drone_2d_custom_gym_env.event_handler import *
 
 import gym
 from gym import spaces
