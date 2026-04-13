@@ -20,11 +20,18 @@ class Drone2dEnv(gym.Env):
     initial_throw: (bool) if true, the drone is initially thrown with random force
     initial_force: (float) maximum magnitude of the random initial throw force
     initial_rotation_force: (float) maximum magnitude of the random initial rotation force
+    step_penalty: (float) constant penalty applied on every time step
+    goal_reward: (float) terminal reward granted when the drone reaches the target area
+    death_penalty: (float) terminal penalty applied on failure
+    success_radius: (float) distance in pixels from the target that counts as success
+    Wind_magnitude:(float) wind magnitude 
+    wind:(string) None or "Uniform" or "Random"
     """
 
     def __init__(self, render_sim=False, render_path=True, render_shade=True, shade_distance=70,
-                 n_steps=500, n_fall_steps=10, change_target=False, initial_throw=True,
-                 initial_force=25000, initial_rotation_force=3000):
+                 n_steps=500, n_fall_steps=5, change_target=False, initial_throw=True,
+                 initial_force=5000, initial_rotation_force=600, step_penalty=0.1,
+                 goal_reward=100.0, death_penalty=-100.0, success_radius=25.0,wind=None,wind_magnitude=100):
 
         self.render_sim = render_sim
         self.render_path = render_path
@@ -32,11 +39,6 @@ class Drone2dEnv(gym.Env):
 
         if self.render_sim is True:
             self.init_pygame()
-            self.flight_path = []
-            self.drop_path = []
-            self.path_drone_shade = []
-
-        self.init_pymunk()
 
         #Parameters
         self.max_time_steps = n_steps
@@ -46,7 +48,16 @@ class Drone2dEnv(gym.Env):
         self.initial_throw = initial_throw
         self.initial_force = initial_force
         self.initial_rotation_force = initial_rotation_force
+        self.step_penalty = step_penalty
+        self.goal_reward = goal_reward
+        self.death_penalty = death_penalty
+        self.success_radius = success_radius
         self.change_target = change_target
+        self.wind=wind
+        self.wind_mag=wind_magnitude
+
+        uniform_wind_dir=random.randint(0,3)
+        self.wind_dir=uniform_wind_dir
 
         #Initial values
         self.first_step = True
@@ -68,6 +79,8 @@ class Drone2dEnv(gym.Env):
         min_observation = np.array([-1, -1, -1, -1, -1, -1, -1, -1], dtype=np.float32)
         max_observation = np.array([1, 1, 1, 1, 1, 1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=min_observation, high=max_observation, dtype=np.float32)
+
+        self.reset_episode_state()
 
     def init_pygame(self):
         pygame.init()
@@ -101,7 +114,50 @@ class Drone2dEnv(gym.Env):
 
         self.drone_radius = self.drone.drone_radius
 
+    def reset_episode_state(self):
+        if self.render_sim is True:
+            self.flight_path = []
+            self.drop_path = []
+            self.path_drone_shade = []
+
+        self.init_pymunk()
+
+        #Initial values
+        self.first_step = True
+        self.done = False
+        self.info = {}
+        self.current_time_step = 0
+        self.left_force = -1
+        self.right_force = -1
+
+        #Generating target position
+        self.x_target = random.uniform(50, 750)
+        self.y_target = random.uniform(50, 750)
+
     def step(self, action):
+        if self.wind== "Uniform" or "Random":
+            if self.wind== "Uniform":
+                if self.wind_dir==0: #wind blowing from up to down,apply downward wind 
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,-self.wind_mag),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,-self.wind_mag),(self.drone_radius,0))
+                if self.wind_dir==1: #upward wind
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,self.wind_mag),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,self.wind_mag),(self.drone_radius,0))
+                if self.wind_dir==2: #wind blow to left
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(-self.wind_mag,0),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(-self.wind_mag,0),(self.drone_radius,0))
+                if self.wind_dir==3: #wind blow to right
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(self.wind_mag,0),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(self.wind_mag,0),(self.drone_radius,0))
+            if self.wind=="Random":
+                wind_mag_x_left_engine=random.rand() *self.wind_mag*2-self.wind_mag
+                wind_mag_y_left_engine=random.rand()*self.wind_mag*2-self.wind_mag
+                wind_mag_x_right_engine=random.rand() *self.wind_mag*2-self.wind_mag
+                wind_mag_y_right_engine=random.rand()*self.wind_mag*2-self.wind_mag
+                
+                self.drone.frame_shape.body.apply_force_at_local(Vec2d(wind_mag_x_left_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+                self.drone.frame_shape.body.apply_force_at_local(Vec2d(wind_mag_x_right_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+
         if self.first_step is True:
             if self.render_sim is True and self.render_path is True: self.add_postion_to_drop_path()
             if self.render_sim is True and self.render_shade is True: self.add_drone_shade()
@@ -130,18 +186,34 @@ class Drone2dEnv(gym.Env):
             if np.abs(self.shade_x-x) > self.drone_shade_distance or np.abs(self.shade_y-y) > self.drone_shade_distance:
                 self.add_drone_shade()
 
-        #Calulating reward function
         obs = self.get_observation()
-        reward = (1.0/(np.abs(obs[4])+0.1)) + (1.0/(np.abs(obs[5])+0.1))
+        x, y = self.drone.frame_shape.body.position
+        failed = np.abs(obs[3]) == 1 or np.abs(obs[6]) == 1 or np.abs(obs[7]) == 1
+        timed_out = self.current_time_step == self.max_time_steps
+        stable_enough = (
+            np.abs(obs[0]) < 0.1 and
+            np.abs(obs[1]) < 0.1 and
+            np.abs(obs[2]) < 0.1 and
+            np.abs(obs[3]) < 0.1
+        )
+        success = self.reached_target(x, y) and (not failed) and stable_enough
 
-        #Stops episode, when drone is out of range or overlaps
-        if np.abs(obs[3])==1 or np.abs(obs[6])==1 or np.abs(obs[7])==1:
-            self.done = True
-            reward = -10
+        reward = -self.step_penalty
 
-        #Stops episode, when time is up
-        if self.current_time_step == self.max_time_steps:
+        if success:
             self.done = True
+            reward += self.goal_reward
+            self.info["terminal_status"] = "success"
+        elif failed:
+            self.done = True
+            reward += self.death_penalty
+            self.info["terminal_status"] = "failure"
+        elif timed_out:
+            self.done = True
+            reward += self.death_penalty
+            self.info["terminal_status"] = "timeout"
+        else:
+            self.info["terminal_status"] = None
 
         return obs, reward, self.done, self.info
 
@@ -222,9 +294,7 @@ class Drone2dEnv(gym.Env):
         self.clock.tick(60)
 
     def reset(self):
-        self.__init__(self.render_sim, self.render_path, self.render_shade, self.drone_shade_distance,
-                      self.max_time_steps, self.stabilisation_delay, self.change_target, self.initial_throw,
-                      self.initial_force, self.initial_rotation_force)
+        self.reset_episode_state()
         return self.get_observation()
 
     def close(self):
@@ -278,3 +348,6 @@ class Drone2dEnv(gym.Env):
     def change_target_point(self, x, y):
         self.x_target = x
         self.y_target = y
+
+    def reached_target(self, x, y):
+        return np.hypot(x - self.x_target, y - self.y_target) <= self.success_radius

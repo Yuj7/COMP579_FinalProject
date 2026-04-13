@@ -16,7 +16,8 @@ random_action = False #if True, the agent will take actions randomly
 render_sim = True #if True, a graphic is generated
 
 env = gym.make('drone-2d-custom-v0', render_sim=render_sim, render_path=True, render_shade=True,
-            shade_distance=70, n_steps=500, n_fall_steps=10, change_target=True, initial_throw=True)
+            shade_distance=70, n_steps=500, n_fall_steps=5, change_target=True,
+            initial_throw=True, initial_force=5000, initial_rotation_force=600,wind=None,wind_magnitude=100)
 
 """
 The example agent used here was originally trained with Python 3.7
@@ -51,13 +52,13 @@ try:
         if random_action:
             action = env.action_space.sample()
         else:
-            action, _states = model.predict(obs)
+            action, _states = model.predict(obs, deterministic=True)
 
         obs, reward, done, info = env.step(action)
 
         if done is True:
             if continuous_mode is True:
-                state = env.reset()
+                obs = env.reset()
             else:
                 break
 
