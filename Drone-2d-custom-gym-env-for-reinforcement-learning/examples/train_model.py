@@ -41,7 +41,7 @@ def make_env(case_id):
         initial_throw=case["initial_throw"],
         initial_force=case["initial_force"],
         initial_rotation_force=case["initial_rotation_force"],
-        wind=case["wind"]
+        wind=case["wind"],
         wind_magitude=case["wind_magnitude"]
     )
 
