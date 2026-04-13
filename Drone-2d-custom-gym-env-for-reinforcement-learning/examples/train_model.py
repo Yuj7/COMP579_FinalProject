@@ -13,13 +13,17 @@ MODEL_DIR.mkdir(exist_ok=True)
 ALGO = "ppo"
 
 # Select the environment case to train on: 1 or 2
-CASE_ID = 2
+CASE_ID = 3
 
 TIMESTEPS = 180000
 
 CASES = {
-    1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600},
-    2: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500},
+    1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind":None,"wind_magnitude":100},
+    2: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500,"wind":None,"wind_magnitude":100},
+    3: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind": "Uniform","wind_magnitude":100},
+    4: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500,"wind": "Uniform","wind_magnitude":100},
+    5: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind": "Random","wind_magnitude":100},
+    6: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500,"wind": "Random","wind_magnitude":100}
 }
 
 
@@ -37,6 +41,8 @@ def make_env(case_id):
         initial_throw=case["initial_throw"],
         initial_force=case["initial_force"],
         initial_rotation_force=case["initial_rotation_force"],
+        wind=case["wind"]
+        wind_magitude=case["wind_magnitude"]
     )
 
 

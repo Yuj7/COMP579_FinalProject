@@ -12,8 +12,12 @@ MODEL_DIR = Path(__file__).resolve().parent / "ppo_agents"
 NUM_EPISODES = 100
 
 CASES = {
-    1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600},
-    2: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500},
+    1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind":None,"wind_magnitude":100},
+    2: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500,"wind":None,"wind_magnitude":100},
+    3: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind": "Uniform","wind_magnitude":100},
+    4: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500,"wind": "Uniform","wind_magnitude":100},
+    5: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind": "Random","wind_magnitude":100},
+    6: {"initial_throw": True, "initial_force": 12000, "initial_rotation_force": 1500,"wind": "Random","wind_magnitude":100}
 }
 
 # Point these to the saved model files
