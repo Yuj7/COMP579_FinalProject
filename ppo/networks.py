@@ -13,9 +13,6 @@ class PolicyNetwork(torch.nn.Module):
 
         layers.append(torch.nn.Linear(neurons_size[-1], action_dim))
         self.layers = torch.nn.ModuleList(layers)
-
-        # self.covar = torch.full(size = (action_dim), fill_value = 0.5)
-        # self.cov_matrix = torch.diag(self.covar)
         
         log_std = 0.5 * np.ones(action_dim, dtype = np.float32)
         self.log_std = torch.nn.Parameter(torch.as_tensor(log_std))
@@ -27,13 +24,16 @@ class PolicyNetwork(torch.nn.Module):
                 logit = torch.relu(layer(logit))
         return logit
 
-    def get_action(self, state : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        mu = self.forward(state)
-        dist = torch.distributions.MultivariateNormal(mu, torch.exp(self.log_std))
-        action = dist.sample()
-        log_prob = torch.log(action)
-
-        projected_action = torch.tanh(action)
+    def get_action(self, state : torch.Tensor, deterministic : bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+        if deterministic:
+            mu = self.forward(state)
+            return torch.tanh(mu)
+        else:
+            mu = self.forward(state)
+            dist = torch.distributions.MultivariateNormal(mu, torch.exp(self.log_std))
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            projected_action = torch.tanh(action)
         return projected_action, log_prob
 
 class ValueNetwork(torch.nn.Module):
