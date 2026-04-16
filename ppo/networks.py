@@ -8,8 +8,8 @@ class PolicyNetwork(torch.nn.Module):
 
         layers = [torch.nn.Linear(state_dim, neurons_size[0])]
         n_layers = len(neurons_size)
-        for layer in range(1, n_layers - 1):
-            layers.append(torch.nn.Linear(neurons_size[layer - 1], neurons_size[layer]))
+        for idx in range(n_layers - 1):
+            layers.append(torch.nn.Linear(layers[idx - 1].out_features, neurons_size[idx]))
 
         layers.append(torch.nn.Linear(neurons_size[-1], action_dim))
         self.layers = torch.nn.ModuleList(layers)
@@ -22,15 +22,17 @@ class PolicyNetwork(torch.nn.Module):
         for idx, layer in enumerate(self.layers):
             if idx != len(self.layers) - 1:
                 logit = torch.relu(layer(logit))
+            else:
+                logit = layer(logit)
         return logit
 
-    def get_action(self, state : torch.Tensor, deterministic : bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_action(self, state : torch.Tensor, deterministic : bool = False) ->  torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if deterministic:
             mu = self.forward(state)
             return torch.tanh(mu)
         else:
             mu = self.forward(state)
-            dist = torch.distributions.MultivariateNormal(mu, torch.exp(self.log_std))
+            dist = torch.distributions.Normal(mu, torch.exp(self.log_std))
             action = dist.sample()
             log_prob = dist.log_prob(action)
             projected_action = torch.tanh(action)
@@ -38,11 +40,12 @@ class PolicyNetwork(torch.nn.Module):
 
 class ValueNetwork(torch.nn.Module):
     def __init__(self, neurons_size : list[int], state_dim : int) -> None:
-        super(PolicyNetwork, self).__init__()
+        super(ValueNetwork, self).__init__()
+
         layers = [torch.nn.Linear(state_dim, neurons_size[0])]
         n_layers = len(neurons_size)
-        for layer in range(1, n_layers - 1):
-            layers.append(torch.nn.Linear(neurons_size[layer - 1], neurons_size[layer]))
+        for idx in range(n_layers - 1):
+            layers.append(torch.nn.Linear(layers[idx - 1].out_features, neurons_size[idx]))
 
         layers.append(torch.nn.Linear(neurons_size[-1], 1))
         self.layers = torch.nn.ModuleList(layers)
@@ -52,4 +55,6 @@ class ValueNetwork(torch.nn.Module):
         for idx, layer in enumerate(self.layers):
             if idx != len(self.layers) - 1:
                 logit = torch.relu(layer(logit))
+            else:
+                logit = layer(logit)
         return logit
