@@ -31,7 +31,7 @@ class Drone2dEnv(gym.Env):
     def __init__(self, render_sim=False, render_path=True, render_shade=True, shade_distance=70,
                  n_steps=500, n_fall_steps=5, change_target=False, initial_throw=True,
                  initial_force=5000, initial_rotation_force=600, step_penalty=0.1,
-                 goal_reward=100.0, death_penalty=-100.0, success_radius=25.0,wind=None,wind_magnitude=100):
+                 goal_reward=10.0, death_penalty=-10.0, success_radius=25.0,wind=None,wind_magnitude=100.0):
 
         self.render_sim = render_sim
         self.render_path = render_path
@@ -96,7 +96,7 @@ class Drone2dEnv(gym.Env):
         img_path = os.path.join("img", "shade.png")
         img_path = os.path.join(script_dir, img_path)
         self.shade_image = pygame.image.load(img_path)
-
+        self.font = pygame.font.SysFont(None, 28)
     def init_pymunk(self):
         self.space = pymunk.Space()
         self.space.gravity = Vec2d(0, -1000)
@@ -138,25 +138,25 @@ class Drone2dEnv(gym.Env):
         if self.wind== "Uniform" or "Random":
             if self.wind== "Uniform":
                 if self.wind_dir==0: #wind blowing from up to down,apply downward wind 
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,-self.wind_mag),(-self.drone_radius,0))
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,-self.wind_mag),(self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(0,-self.wind_mag),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(0,-self.wind_mag),(self.drone_radius,0))
                 if self.wind_dir==1: #upward wind
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,self.wind_mag),(-self.drone_radius,0))
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(0,self.wind_mag),(self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(0,self.wind_mag),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(0,self.wind_mag),(self.drone_radius,0))
                 if self.wind_dir==2: #wind blow to left
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(-self.wind_mag,0),(-self.drone_radius,0))
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(-self.wind_mag,0),(self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(-self.wind_mag,0),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(-self.wind_mag,0),(self.drone_radius,0))
                 if self.wind_dir==3: #wind blow to right
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(self.wind_mag,0),(-self.drone_radius,0))
-                    self.drone.frame_shape.body.apply_force_at_local(Vec2d(self.wind_mag,0),(self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(self.wind_mag,0),(-self.drone_radius,0))
+                    self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(self.wind_mag,0),(self.drone_radius,0))
             if self.wind=="Random":
                 wind_mag_x_left_engine=random.rand() *self.wind_mag*2-self.wind_mag
                 wind_mag_y_left_engine=random.rand()*self.wind_mag*2-self.wind_mag
                 wind_mag_x_right_engine=random.rand() *self.wind_mag*2-self.wind_mag
                 wind_mag_y_right_engine=random.rand()*self.wind_mag*2-self.wind_mag
                 
-                self.drone.frame_shape.body.apply_force_at_local(Vec2d(wind_mag_x_left_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
-                self.drone.frame_shape.body.apply_force_at_local(Vec2d(wind_mag_x_right_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+                self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(wind_mag_x_left_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+                self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(wind_mag_x_right_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
 
         if self.first_step is True:
             if self.render_sim is True and self.render_path is True: self.add_postion_to_drop_path()
@@ -197,9 +197,9 @@ class Drone2dEnv(gym.Env):
             np.abs(obs[3]) < 0.1
         )
         success = self.reached_target(x, y) and (not failed) and stable_enough
-
+        
         reward = -self.step_penalty
-
+        reward+= 0.01/((obs[4]**2+obs[5]**2)**(0.5)) #distance reward 
         if success:
             self.done = True
             reward += self.goal_reward
@@ -255,7 +255,25 @@ class Drone2dEnv(gym.Env):
         pygame.draw.rect(self.screen, (24, 114, 139), pygame.Rect(0, 0, 800, 800), 8)
         pygame.draw.rect(self.screen, (33, 158, 188), pygame.Rect(50, 50, 700, 700), 4)
         pygame.draw.rect(self.screen, (142, 202, 230), pygame.Rect(200, 200, 400, 400), 4)
-
+        if self.wind=="Uniform":
+            if self.wind_dir==0:
+                display_text = f"Wind Direction: Downward"
+            elif self.wind_dir==1:
+                display_text = f"Wind Direction: Upward"    
+            elif self.wind_dir==2:
+                display_text = f"Wind Direction: Rightward"
+            elif self.wind_dir==3:
+                display_text = f"Wind Direction: Leftward" 
+        elif self.wind=="Random":
+            display_text = f"Wind: Random"
+        # 2. Render to a surface (Text, Antialias, Color)
+        # Using a dark blue/grey to match your UI (Color: 24, 114, 139)
+        text_surface = self.font.render(display_text, True, (24, 114, 139))
+    
+        # 3. Blit to screen (positioned at top-left inside the border)
+        self.screen.blit(text_surface, (60, 60))
+    
+        
         #Drawing done's shade
         if len(self.path_drone_shade):
             for shade in self.path_drone_shade:
@@ -294,6 +312,9 @@ class Drone2dEnv(gym.Env):
         self.clock.tick(60)
 
     def reset(self):
+
+        uniform_wind_dir=random.randint(0,3)
+        self.wind_dir=uniform_wind_dir
         self.reset_episode_state()
         return self.get_observation()
 
