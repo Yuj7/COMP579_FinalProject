@@ -30,14 +30,14 @@ class PolicyNetwork(torch.nn.Module):
                 logit = layer(logit)
         return logit
     
-    # def orthogonal_param_init(self, model):
-    #     if isinstance(model, torch.nn.Linear):
-    #         with torch.no_grad():
-    #             torch.nn.init.orthogonal_(model.weight)
-    #             if model.out_features == self.action_dim and model.in_features == self.last_hidden_dim:
-    #                 model.weight.div_(100)
-    #             if model.bias is not None:
-    #                 torch.nn.init.constant_(model.bias, 0)
+    def orthogonal_param_init(self, model):
+        if isinstance(model, torch.nn.Linear):
+            with torch.no_grad():
+                torch.nn.init.orthogonal_(model.weight)
+                if model.out_features == self.action_dim and model.in_features == self.last_hidden_dim:
+                    model.weight.div_(100)
+                if model.bias is not None:
+                    torch.nn.init.constant_(model.bias, 0)
 
     def get_action(self, state : torch.Tensor, deterministic : bool = False) ->  torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if deterministic:
