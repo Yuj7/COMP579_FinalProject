@@ -4,13 +4,14 @@ import numpy as np
 from ppo import PolicyNetwork, ValueNetwork
 import gym
 from torch.utils.data import random_split
-from utils import Logger
-from enum import Enum
+from utils import Logger, RolloutBatch
+
 
 class PPO():
 
     NORM_EPS = 1e-10
     EPS_TANH = 1e-6
+    ENTROPY_COEFF = 0.1
 
     def __init__(
             self,
@@ -29,6 +30,7 @@ class PPO():
             nb_eval_episodes : int,
             logger : Logger.PPO
     ) -> None:
+        
         self.logger = logger
         self.training_env = training_env
         self.eval_env = eval_env
@@ -48,6 +50,7 @@ class PPO():
         self.epsilon = epsilon
         self.mini_batch_size = mini_batch_size
         self.nb_eval_episodes = nb_eval_episodes
+        self.rollout_batch = RolloutBatch(self.time_steps_per_batch, self.training_env)
 
     def compute_gae(self, rewards : torch.Tensor, values : torch.Tensor, next_values : torch.Tensor, dones : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         T = len(rewards)
@@ -66,9 +69,8 @@ class PPO():
 
     def collect_batch(self) -> tuple:
         current_t = 0
-
-        batch_states, batch_actions, batch_next_states, batch_log_probs, batch_rewards, batch_dones = [], [], [], [], [], []
-
+        
+        self.rollout_batch.reset()
         with torch.no_grad():
             while current_t < self.time_steps_per_batch:
                 ep_rewards = []
@@ -82,32 +84,26 @@ class PPO():
                     log_prob = log_prob.numpy()
                     next_state, reward, done, _ = self.training_env.step(action)
 
-                    batch_states.append(state)
-                    batch_actions.append(raw_action)
-                    batch_next_states.append(next_state)
-                    batch_log_probs.append(log_prob)
-                    batch_rewards.append(reward)
-                    batch_dones.append(float(done))
+                    self.rollout_batch.states[current_t, :] = torch.from_numpy(state)
+                    self.rollout_batch.actions[current_t, :] = torch.from_numpy(raw_action)
+                    self.rollout_batch.next_states[current_t, :] = torch.from_numpy(next_state)
+                    self.rollout_batch.log_probs[current_t] = torch.from_numpy(log_prob)
+                    self.rollout_batch.rewards[current_t] = reward
+                    self.rollout_batch.dones[current_t] = done
 
                     state = next_state
 
                     ep_rewards.append(reward)
                     current_t += 1
 
-            batch_states = torch.tensor(np.array(batch_states), dtype = torch.float32)
-            batch_actions = torch.tensor(np.array(batch_actions), dtype = torch.float32)
-            batch_next_states = torch.tensor(np.array(batch_next_states), dtype = torch.float32)
-            batch_log_probs = torch.tensor(np.array(batch_log_probs), dtype = torch.float32)
-            batch_rewards = torch.tensor(np.array(batch_rewards), dtype = torch.float32)
-            batch_dones = torch.tensor(np.array(batch_dones), dtype = torch.float32)
+            self.rollout_batch.values = self.value(self.rollout_batch.states).squeeze()   
+            self.rollout_batch.next_values = self.value(self.rollout_batch.next_states).squeeze()
 
+            norm_adv, adv, critic_target = self.compute_gae(self.rollout_batch.rewards, self.rollout_batch.values, self.rollout_batch.next_values, self.rollout_batch.dones)
 
-            batch_values = self.value(batch_states).squeeze()   
-            batch_next_values = self.value(batch_next_states).squeeze()
-
-            # print(f'Rewards mean: {batch_rewards.mean()}, Values mean: {batch_values.mean()}')
-
-        return batch_states, batch_actions, batch_rewards, batch_log_probs, batch_values, batch_next_values, batch_dones
+            self.rollout_batch.norm_adv = norm_adv
+            self.rollout_batch.adv = adv
+            self.rollout_batch.critic_target = critic_target
 
     def get_log_prob(self, batch_states : torch.Tensor, batch_actions : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         mu = self.policy(batch_states)
@@ -118,28 +114,25 @@ class PPO():
         return log_probs.sum(axis = -1, keepdim = True), entropy
     
     def learn(self):
-        batch_states, batch_actions, batch_rewards, batch_log_probs, batch_values, batch_next_values, batch_dones = self.collect_batch()
-        batch_norm_advantages, batch_advantages, batch_critic_targets = self.compute_gae(batch_rewards, batch_values, batch_next_values, batch_dones)
-        for _ in range(self.epochs):
+        self.collect_batch()
+        actor_loss_log = np.zeros(self.epochs)
+        critic_loss_log = np.zeros(self.epochs)
+        adv_log = np.zeros(self.epochs)
 
-            # Shuffle indices
-            sample_idx = torch.randperm(batch_states.size(0))
+        for epoch in range(self.epochs):
+            actor_loss_per_epoch = []
+            critic_loss_per_epoch = []
+            adv_per_epoch = []
+            for mb_states, mb_actions, mb_log_probs, mb_norm_adv, mb_adv, mb_critic_target  in self.rollout_batch.sample_mini_batches(mini_batch_size=self.mini_batch_size):
 
-            # Collect minibatches   
-            states, actions, log_probs, norm_gaes, gaes, critic_targets = \
-                self.split_into_mini_batch(sample_idx, batch_states, batch_actions, batch_log_probs, batch_norm_advantages, batch_advantages, batch_critic_targets)
-
-            for state, action, log_prob, norm_gae, gae, critic_target in zip(states, actions, log_probs, norm_gaes, gaes, critic_targets):
-    
-                current_log_probs, entropy = self.get_log_prob(state, action)
-                ratios = torch.exp(current_log_probs.squeeze() - log_prob)
+                current_log_probs, entropy = self.get_log_prob(mb_states, mb_actions)
+                ratios = torch.exp(current_log_probs.squeeze() - mb_log_probs)
                 
-                # print(f'mean ratio: {ratios.mean()}, std ratio: {ratios.std()}')
-                first_surrogate = ratios * norm_gae
-                second_surrogate = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * norm_gae
+                first_surrogate = ratios * mb_norm_adv
+                second_surrogate = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * mb_norm_adv
 
-                actor_loss = (-torch.min(first_surrogate, second_surrogate)).mean() - 0.1 * entropy
-                critic_loss = self.value_criterion(self.value(state).squeeze(), critic_target)
+                actor_loss = (-torch.min(first_surrogate, second_surrogate)).mean() - PPO.ENTROPY_COEFF * entropy
+                critic_loss = self.value_criterion(self.value(mb_states).squeeze(), mb_critic_target)
 
                 self.policy_optimizer.zero_grad()
                 actor_loss.backward()
@@ -152,46 +145,15 @@ class PPO():
                 self.value_optimizer.step()
 
                 with torch.no_grad():
-                    actor_loss = actor_loss.mean().item()
-                    critic_loss = critic_loss.mean().item()
-                    gae = gae.mean().item()
-                    self.add_metrics_to_log(actor_loss, critic_loss, gae)
-    
-    def split_into_mini_batch(
-            self,
-            shuffled_batch_idx : torch.Tensor,
-            batch_states : torch.Tensor,
-            batch_actions : torch.Tensor,
-            batch_log_probs : torch.Tensor,
-            batch_norm_advantages : torch.Tensor,
-            batch_advantages : torch.Tensor,
-            batch_critic_targets : torch.Tensor
-    ) -> list[torch.Tensor]:
+                    actor_loss_per_epoch.append(actor_loss.mean().item())
+                    critic_loss_per_epoch.append(critic_loss.mean().item())
+                    adv_per_epoch.append(mb_adv.mean().item())
+
+            actor_loss_log[epoch] = np.mean(actor_loss_per_epoch)
+            critic_loss_log[epoch] = np.mean(critic_loss_per_epoch)
+            adv_log[epoch] = np.mean(adv_per_epoch)
         
-        states = []
-        actions = []
-        log_probs = []
-        norm_gaes = []
-        gaes = []
-        critics_targets = []
-
-        if self.time_steps_per_batch % self.mini_batch_size == 0:
-            mini_batches_sizes = [self.mini_batch_size for _ in range(int(self.time_steps_per_batch / self.mini_batch_size))]
-            mini_batches = random_split(shuffled_batch_idx, mini_batches_sizes)
-        else:
-            mini_batches_sizes = [self.mini_batch_size for _ in range(int(self.time_steps_per_batch // self.mini_batch_size))]
-            mini_batches_sizes.append(int(self.time_steps_per_batch - self.time_steps_per_batch // self.mini_batch_size * self.mini_batch_size))
-            mini_batches = random_split(shuffled_batch_idx, mini_batches_sizes)
-
-        for batch in mini_batches:
-            states.append(batch_states[batch])
-            actions.append(batch_actions[batch])
-            log_probs.append(batch_log_probs[batch])
-            norm_gaes.append(batch_norm_advantages[batch])
-            gaes.append(batch_advantages[batch])
-            critics_targets.append(batch_critic_targets[batch])
-
-        return states, actions, log_probs, norm_gaes, gaes, critics_targets
+        self.add_metrics_to_log(np.mean(actor_loss_log), np.mean(critic_loss_log), np.mean(adv_log))
     
     def evaluation_phase(self) -> tuple[np.ndarray, np.ndarray]:
         eval_returns = []
@@ -216,4 +178,4 @@ class PPO():
     def add_metrics_to_log(self, actor_loss : float, critic_loss : float, advantage : float) -> None:
         self.logger.log['actor_loss'].append(round(actor_loss, 1))
         self.logger.log['value_loss'].append(round(critic_loss, 1))
-        self.logger.log['advantages'].append(round(advantage, 1))
+        self.logger.log['advantages'].append(round(advantage, 1))   
