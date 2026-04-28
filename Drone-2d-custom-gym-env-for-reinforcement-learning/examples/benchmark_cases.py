@@ -24,7 +24,6 @@ CASES = {
 def model_path(algo, case_id):
     return MODEL_DIR / f"{algo}_agent_case{case_id}"
 
-
 def make_env(case_id, render_sim = False):
     case = CASES[case_id]
     return gym.make(
@@ -41,14 +40,12 @@ def make_env(case_id, render_sim = False):
         initial_rotation_force=case["initial_rotation_force"],
     )
 
-
 def load_model(algo, case_id, env):
     if algo == "ppo":
         return PPO.load(str(model_path(algo, case_id)), env=env)
     if algo == "sac":
         return SAC.load(str(model_path(algo, case_id)), env=env)
     raise ValueError(f"Unsupported algorithm: {algo}")
-
 
 def run_episode(model, env, render = False):
     obs = env.reset()
