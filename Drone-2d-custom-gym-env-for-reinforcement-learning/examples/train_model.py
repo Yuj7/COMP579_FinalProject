@@ -5,6 +5,9 @@ from stable_baselines3 import PPO, SAC
 
 # Need it to register the custom environment
 import drone_2d_custom_gym_env
+import numpy as np
+if not hasattr(np, 'bool8'):
+    np.bool8 = np.bool_
 
 MODEL_DIR = Path(__file__).resolve().parent / "ppo_agents"
 MODEL_DIR.mkdir(exist_ok=True)
@@ -13,7 +16,7 @@ MODEL_DIR.mkdir(exist_ok=True)
 ALGO = "ppo"
 
 # Select the environment case to train on: 1 or 2
-CASE_ID = 3
+CASE_ID = 1
 
 TIMESTEPS = 180000
 
@@ -42,15 +45,18 @@ def make_env(case_id):
         initial_force=case["initial_force"],
         initial_rotation_force=case["initial_rotation_force"],
         wind=case["wind"],
-        wind_magnitude=case["wind_magnitude"]
+        wind_magnitude=case["wind_magnitude"],
+        step_penalty = 0,
+        goal_reward = 20.0,
+        death_penalty = -10.0,
+        success_radius = 25.0
     )
-
 
 if __name__ == "__main__":
     env = make_env(CASE_ID)
     try:
         if ALGO == "ppo":
-            model = PPO("MlpPolicy", env, verbose=1)
+            model = PPO("MlpPolicy", env, verbose=1, ent_coef = 0.01)
         elif ALGO == "sac":
             model = SAC("MlpPolicy", env, verbose=1)
         else:
