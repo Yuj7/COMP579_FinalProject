@@ -209,16 +209,20 @@ class Drone2dEnv(gym.Env):
             self.done = True
             reward += self.goal_reward
             self.info["terminal_status"] = "success"
+            self.info['is_success'] = True
         elif failed:
             self.done = True
             reward += self.death_penalty
             self.info["terminal_status"] = "failure"
+            self.info['is_success'] = False
         elif timed_out:
             self.done = True
             reward += self.death_penalty
             self.info["terminal_status"] = "timeout"
+            self.info['is_success'] = False
         else:
             self.info["terminal_status"] = None
+            self.info['is_success'] = False
 
         return obs, reward, self.done, self.info
 

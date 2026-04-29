@@ -1,6 +1,6 @@
 from .networks import PolicyNetwork, ValueNetwork
-from .ppo import PPO
+from .ppo import CustomPPO
 
 assert PolicyNetwork
 assert ValueNetwork
-assert PPO
+assert CustomPPO

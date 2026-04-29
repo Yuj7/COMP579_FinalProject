@@ -3,15 +3,13 @@ from torch import optim
 import numpy as np
 from ppo import PolicyNetwork, ValueNetwork
 import gym
-from torch.utils.data import random_split
 from utils import Logger, RolloutBatch
+from eval import Evaluation
 
-
-class PPO():
+class CustomPPO():
 
     NORM_EPS = 1e-10
     EPS_TANH = 1e-6
-    ENTROPY_COEFF = 0.1
 
     def __init__(
             self,
@@ -26,11 +24,17 @@ class PPO():
             time_steps_per_batch : int,
             epochs : int,
             epsilon : float,
+            entropy_coeff : float,
             mini_batch_size : int,
+            eval_freq : int,
             nb_eval_episodes : int,
-            logger : Logger.PPO
+            save_file_name : str,
+            logger : Logger.PPO | None = None
     ) -> None:
-        
+        self.log = False
+        if logger is not None:
+            self.log = True
+            
         self.logger = logger
         self.training_env = training_env
         self.eval_env = eval_env
@@ -49,8 +53,20 @@ class PPO():
         self.epochs = epochs
         self.epsilon = epsilon
         self.mini_batch_size = mini_batch_size
-        self.nb_eval_episodes = nb_eval_episodes
+        self.entropy_coeff = entropy_coeff
         self.rollout_batch = RolloutBatch(self.time_steps_per_batch, self.training_env)
+
+        self.eval_freq = eval_freq
+        self.nb_eval_episodes = nb_eval_episodes
+        self.total_steps = 0
+        self.last_eval_step = 0
+        self.eval_avg_return = []
+        self.eval_std_return = []
+        self.current_best = -np.inf
+        
+        self.save_file_name = save_file_name
+
+        self._last_obs = self.training_env.reset()
 
     def compute_gae(self, rewards : torch.Tensor, values : torch.Tensor, next_values : torch.Tensor, dones : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         T = len(rewards)
@@ -69,32 +85,40 @@ class PPO():
 
     def collect_batch(self) -> tuple:
         current_t = 0
-        
         self.rollout_batch.reset()
+        state = self._last_obs
+
         with torch.no_grad():
+            ep_rewards = []
+            done = False
+            
             while current_t < self.time_steps_per_batch:
-                ep_rewards = []
-                done = False
-                state = self.training_env.reset()
-                
-                while not done and current_t < self.time_steps_per_batch:
-                    action, raw_action, log_prob = self.policy.get_action(torch.tensor(state, dtype = torch.float32))
-                    action = action.numpy()
-                    raw_action = raw_action.numpy()
-                    log_prob = log_prob.numpy()
-                    next_state, reward, done, _ = self.training_env.step(action)
+                action, raw_action, log_prob = self.policy.get_action(torch.tensor(state, dtype = torch.float32))
+                action = action.numpy()
+                raw_action = raw_action.numpy()
+                log_prob = log_prob.numpy()
+                next_state, reward, done, _ = self.training_env.step(action)
 
-                    self.rollout_batch.states[current_t, :] = torch.from_numpy(state)
-                    self.rollout_batch.actions[current_t, :] = torch.from_numpy(raw_action)
-                    self.rollout_batch.next_states[current_t, :] = torch.from_numpy(next_state)
-                    self.rollout_batch.log_probs[current_t] = torch.from_numpy(log_prob)
-                    self.rollout_batch.rewards[current_t] = reward
-                    self.rollout_batch.dones[current_t] = done
+                self.rollout_batch.states[current_t, :] = torch.from_numpy(state)
+                self.rollout_batch.actions[current_t, :] = torch.from_numpy(raw_action)
+                self.rollout_batch.next_states[current_t, :] = torch.from_numpy(next_state)
+                self.rollout_batch.log_probs[current_t] = torch.from_numpy(log_prob)
+                self.rollout_batch.rewards[current_t] = reward
+                self.rollout_batch.dones[current_t] = done
 
-                    state = next_state
+                state = next_state
+                current_t += 1
+                self.total_steps += 1
 
-                    ep_rewards.append(reward)
-                    current_t += 1
+                if self.total_steps - self.last_eval_step >= self.eval_freq:
+                    self.run_eval()
+                    self.last_eval_step = self.total_steps
+
+                ep_rewards.append(reward)
+                self._last_obs = state
+
+                if done:
+                    state = self.training_env.reset()
 
             self.rollout_batch.values = self.value(self.rollout_batch.states).squeeze()   
             self.rollout_batch.next_values = self.value(self.rollout_batch.next_states).squeeze()
@@ -110,7 +134,7 @@ class PPO():
         dist = torch.distributions.Normal(mu, torch.exp(self.policy.log_std))
         entropy = dist.entropy().sum(-1).mean()
         projected_action = torch.tanh(batch_actions)
-        log_probs = dist.log_prob(batch_actions) - torch.log(1 - projected_action.pow(2) + PPO.EPS_TANH)
+        log_probs = dist.log_prob(batch_actions) - torch.log(1 - projected_action.pow(2) + CustomPPO.EPS_TANH)
         return log_probs.sum(axis = -1, keepdim = True), entropy
     
     def learn(self):
@@ -123,6 +147,7 @@ class PPO():
             actor_loss_per_epoch = []
             critic_loss_per_epoch = []
             adv_per_epoch = []
+
             for mb_states, mb_actions, mb_log_probs, mb_norm_adv, mb_adv, mb_critic_target  in self.rollout_batch.sample_mini_batches(mini_batch_size=self.mini_batch_size):
 
                 current_log_probs, entropy = self.get_log_prob(mb_states, mb_actions)
@@ -131,7 +156,7 @@ class PPO():
                 first_surrogate = ratios * mb_norm_adv
                 second_surrogate = torch.clamp(ratios, 1 - self.epsilon, 1 + self.epsilon) * mb_norm_adv
 
-                actor_loss = (-torch.min(first_surrogate, second_surrogate)).mean() - PPO.ENTROPY_COEFF * entropy
+                actor_loss = (-torch.min(first_surrogate, second_surrogate)).mean() - self.entropy_coeff * entropy
                 critic_loss = self.value_criterion(self.value(mb_states).squeeze(), mb_critic_target)
 
                 self.policy_optimizer.zero_grad()
@@ -144,36 +169,31 @@ class PPO():
                 torch.nn.utils.clip_grad_norm_(self.value.parameters(), 1.0)
                 self.value_optimizer.step()
 
-                with torch.no_grad():
-                    actor_loss_per_epoch.append(actor_loss.mean().item())
-                    critic_loss_per_epoch.append(critic_loss.mean().item())
-                    adv_per_epoch.append(mb_adv.mean().item())
+                if self.log:
+                    with torch.no_grad():
+                        actor_loss_per_epoch.append(actor_loss.mean().item())
+                        critic_loss_per_epoch.append(critic_loss.mean().item())
+                        adv_per_epoch.append(mb_adv.mean().item())
 
-            actor_loss_log[epoch] = np.mean(actor_loss_per_epoch)
-            critic_loss_log[epoch] = np.mean(critic_loss_per_epoch)
-            adv_log[epoch] = np.mean(adv_per_epoch)
+            if self.log:
+                actor_loss_log[epoch] = np.mean(actor_loss_per_epoch)
+                critic_loss_log[epoch] = np.mean(critic_loss_per_epoch)
+                adv_log[epoch] = np.mean(adv_per_epoch)
         
-        self.add_metrics_to_log(np.mean(actor_loss_log), np.mean(critic_loss_log), np.mean(adv_log))
+        if self.log:
+            self.add_metrics_to_log(np.mean(actor_loss_log), np.mean(critic_loss_log), np.mean(adv_log))
     
-    def evaluation_phase(self) -> tuple[np.ndarray, np.ndarray]:
-        eval_returns = []
-        with torch.no_grad():
-            for ep in range(self.nb_eval_episodes):
-                state = self.eval_env.reset()
-                done = False
-                ep_rewards = 0
-                while not done:
-                    action = self.policy.get_action(torch.tensor(state, dtype = torch.float32), deterministic = True)
-                    action = action.numpy()
-                    next_state, reward, done, _ = self.eval_env.step(action)
+    def run_eval(self) -> tuple[np.ndarray, np.ndarray]:
+        evaluation_phase = Evaluation(self.eval_env, self.nb_eval_episodes, self.policy)
+        avg_return, std_return = evaluation_phase.rollouts()
+        self.eval_avg_return.append(avg_return)
+        self.eval_std_return.append(std_return)
 
-                    state = next_state
-
-                    ep_rewards += reward
-                
-                eval_returns.append(ep_rewards)
-            
-        return np.mean(eval_returns), np.std(eval_returns)
+        if avg_return > self.current_best:
+            self.current_best = avg_return
+            torch.save(self.policy.state_dict(), f'./models/{self.save_file_name}.pth')
+        
+        print(f'Current step: {self.total_steps}, avg return: {avg_return}, best avg return: {self.current_best}')
     
     def add_metrics_to_log(self, actor_loss : float, critic_loss : float, advantage : float) -> None:
         self.logger.log['actor_loss'].append(round(actor_loss, 1))
