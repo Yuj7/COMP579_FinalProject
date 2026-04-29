@@ -1,22 +1,31 @@
 import pandas as pd
+import numpy as np
 
 class Logger:
     def __init__(self):
         pass
-    def log_to_file(self, data : list[list], filename : str, columns : list[str]) -> None:
-        """
-        Logs data into a txt file
+    # def log_to_file(self, data : list[list], filename : str, columns : list[str]) -> None:
+    #     """
+    #     Logs data into a txt file
         
-        Args:
-            data (list[list]): List of the lists representing the columns to log
-            filename (str): Name of the file
-            columns (list[str]): name of columns
-        """
-        data_dict = dict(zip(columns, data))
-        df = pd.DataFrame(data_dict)
+    #     Args:
+    #         data (list[list]): List of the lists representing the columns to log
+    #         filename (str): Name of the file
+    #         columns (list[str]): name of columns
+    #     """
+    #     data_dict = dict(zip(columns, data))
+    #     df = pd.DataFrame(data_dict)
 
-        with open(f'./logs/{filename}.txt', 'w') as f:
-            f.write(df.to_string())
+    #     with open(f'./logs/{filename}.txt', 'w') as f:
+    #         f.write(df.to_string())
+
+    def log_to_file(self, results : list[list], ep_lengths : list[list], successes : list[list], filename : str) -> None:
+        np.savez(
+            f'./logs/{filename}',
+            results = results,
+            ep_lengths = ep_lengths,
+            successes = successes
+        )
 
     class PPO:
         def __init__(self, case):

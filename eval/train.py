@@ -20,7 +20,7 @@ class Algorithm(Enum):
     BaselineSAC = 'BaselineSAC'
 
 # Select the algorithm to train
-ALGO = Algorithm.BaselinePPO
+ALGO = Algorithm.CustomPPO
 
 # Select the environment case to train on
 CASE_ID = 1
@@ -66,63 +66,68 @@ NB_EVAL_EP = 10
 
 if __name__ == "__main__":
     start_time = datetime.now()
-    training_env = make_env(CASE_ID)
-    eval_env = make_env(CASE_ID)
-    logger = Logger()
-    try:
-        if ALGO == Algorithm.BaselinePPO:
-            model = PPO("MlpPolicy", training_env, verbose = 1, ent_coef = 0.01)
-            eval_callback = EvalCallback(
-                eval_env,
-                best_model_save_path = f"./models/{ALGO.value}_case{CASE_ID}",
-                log_path = f"./logs/{ALGO.value}_case{CASE_ID}",
-                eval_freq = EVAL_FREQ_STEPS, 
-                n_eval_episodes = NB_EVAL_EP, 
-                deterministic = True,
-                render = False
+    
+    for seed in range(3):
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        training_env = make_env(CASE_ID)
+        eval_env = make_env(CASE_ID)
+        logger = Logger()
+        try:
+            if ALGO == Algorithm.BaselinePPO:
+                model = PPO("MlpPolicy", training_env, verbose = 1, ent_coef = 0.01)
+                eval_callback = EvalCallback(
+                    eval_env,
+                    best_model_save_path = f"./models/{ALGO.value}_case{CASE_ID}_Seed{seed}",
+                    log_path = f"./logs/{ALGO.value}_case{CASE_ID}_Seed{seed}",
+                    eval_freq = EVAL_FREQ_STEPS, 
+                    n_eval_episodes = NB_EVAL_EP, 
+                    deterministic = True,
+                    render = False
+                    )
+                model.learn(total_timesteps = TIMESTEPS, callback = eval_callback)
+
+            elif ALGO == Algorithm.BaselineSAC:
+                model = SAC("MlpPolicy", training_env, verbose = 1)
+                model.learn(total_timesteps=TIMESTEPS)
+                # model.save(str(MODEL_DIR / f"{ALGO}_case{CASE_ID}"))
+
+            elif ALGO == Algorithm.CustomPPO:
+                current_steps = 0
+
+                ppo_agent = CustomPPO(
+                    training_env = training_env,
+                    eval_env = eval_env,
+                    policy_neurons_size = [256, 256],
+                    value_neurons_size = [256, 256],
+                    lr_policy = 1e-4,
+                    lr_value = 1e-4,
+                    gamma = 0.99,
+                    lamda = 0.95,
+                    time_steps_per_batch = 2048,
+                    epochs = 10,
+                    epsilon = 0.2,
+                    entropy_coeff = 0.01,
+                    mini_batch_size = 64,
+                    save_file_name = f'{ALGO.value}_Case{CASE_ID}_Seed{seed}',
+                    eval_freq = EVAL_FREQ_STEPS,
+                    nb_eval_episodes = NB_EVAL_EP,
                 )
-            model.learn(total_timesteps = TIMESTEPS, callback = eval_callback)
 
-        elif ALGO == Algorithm.BaselineSAC:
-            model = SAC("MlpPolicy", training_env, verbose = 1)
-            model.learn(total_timesteps=TIMESTEPS)
-            model.save(str(MODEL_DIR / f"{ALGO}_case{CASE_ID}"))
+                while current_steps < TIMESTEPS:
+                    ppo_agent.learn()
+                    current_steps += ppo_agent.time_steps_per_batch
 
-        elif ALGO == Algorithm.CustomPPO:
-            current_steps = 0
+                logger.log_to_file(ppo_agent.eval_avg_return, ppo_agent.eval_ep_lengths, ppo_agent.eval_successes, f'{ALGO.value}_Case{CASE_ID}_Seed{seed}')
 
-            ppo_agent = CustomPPO(
-                training_env = training_env,
-                eval_env = eval_env,
-                policy_neurons_size = [256, 256],
-                value_neurons_size = [256, 256],
-                lr_policy = 1e-4,
-                lr_value = 1e-4,
-                gamma = 0.99,
-                lamda = 0.95,
-                time_steps_per_batch = 2048,
-                epochs = 10,
-                epsilon = 0.2,
-                entropy_coeff = 0.1,
-                mini_batch_size = 64,
-                save_file_name = f'{ALGO.value}_Case{CASE_ID}',
-                eval_freq = EVAL_FREQ_STEPS,
-                nb_eval_episodes = NB_EVAL_EP,
-            )
+            elif ALGO == Algorithm.CustomSAC:
+                pass
+            else:
+                raise ValueError(f"Unsupported algorithm: {ALGO}")
 
-            while current_steps < TIMESTEPS:
-                ppo_agent.learn()
-                current_steps += ppo_agent.time_steps_per_batch
-
-            logger.log_to_file([ppo_agent.eval_avg_return, ppo_agent.eval_std_return], ppo_agent.save_file_name, ['avg_return', 'std_return'])
-
-        elif ALGO == Algorithm.CustomSAC:
-            pass
-        else:
-            raise ValueError(f"Unsupported algorithm: {ALGO}")
-
-    finally:
-        end_time = datetime.now()
-        print(end_time - start_time) 
-        training_env.close()
-        eval_env.close()
+        finally:
+            end_time = datetime.now()
+            print(end_time - start_time) 
+            training_env.close()
+            eval_env.close()

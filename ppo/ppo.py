@@ -61,7 +61,8 @@ class CustomPPO():
         self.total_steps = 0
         self.last_eval_step = 0
         self.eval_avg_return = []
-        self.eval_std_return = []
+        self.eval_ep_lengths = []
+        self.eval_successes = []
         self.current_best = -np.inf
         
         self.save_file_name = save_file_name
@@ -185,15 +186,16 @@ class CustomPPO():
     
     def run_eval(self) -> tuple[np.ndarray, np.ndarray]:
         evaluation_phase = Evaluation(self.eval_env, self.nb_eval_episodes, self.policy)
-        avg_return, std_return = evaluation_phase.rollouts()
-        self.eval_avg_return.append(avg_return)
-        self.eval_std_return.append(std_return)
+        episodic_return, ep_length, successes = evaluation_phase.rollouts()
+        self.eval_avg_return.append(episodic_return)
+        self.eval_ep_lengths.append(ep_length)
+        self.eval_successes.append(successes)
 
-        if avg_return > self.current_best:
-            self.current_best = avg_return
+        if np.mean(episodic_return) > self.current_best:
+            self.current_best = np.round(np.mean(episodic_return), 2)
             torch.save(self.policy.state_dict(), f'./models/{self.save_file_name}.pth')
         
-        print(f'Current step: {self.total_steps}, avg return: {avg_return}, best avg return: {self.current_best}')
+        print(f'Current step: {self.total_steps}, avg return: {np.round(np.mean(episodic_return), 2)}, best avg return: {self.current_best}')
     
     def add_metrics_to_log(self, actor_loss : float, critic_loss : float, advantage : float) -> None:
         self.logger.log['actor_loss'].append(round(actor_loss, 1))
