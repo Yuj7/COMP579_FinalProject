@@ -1,7 +1,7 @@
 import torch
 from torch import optim
 import numpy as np
-from ppo import PolicyNetwork, ValueNetwork
+from .networks import PolicyNetwork, ValueNetwork
 import gym
 from utils import Logger, RolloutBatch
 from eval import Evaluation
@@ -185,7 +185,7 @@ class CustomPPO():
             self.add_metrics_to_log(np.mean(actor_loss_log), np.mean(critic_loss_log), np.mean(adv_log))
     
     def run_eval(self) -> tuple[np.ndarray, np.ndarray]:
-        evaluation_phase = Evaluation(self.eval_env, self.nb_eval_episodes, self.policy)
+        evaluation_phase = Evaluation(self.eval_env, self.nb_eval_episodes, self.policy.get_action)
         episodic_return, ep_length, successes = evaluation_phase.rollouts()
         self.eval_avg_return.append(episodic_return)
         self.eval_ep_lengths.append(ep_length)

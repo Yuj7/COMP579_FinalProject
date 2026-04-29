@@ -3,10 +3,10 @@ import torch
 import gym
 
 class Evaluation():
-    def __init__(self, env : gym.Env, nb_eval_episodes : int, policy) -> None:
+    def __init__(self, env : gym.Env, nb_eval_episodes : int, det_action) -> None:
         self.env = env
         self.nb_eval_episodes = nb_eval_episodes
-        self.policy = policy
+        self.det_action = det_action
 
     def rollouts(self) -> tuple[np.ndarray, np.ndarray]:
         eval_returns = []
@@ -21,7 +21,7 @@ class Evaluation():
                 ep_success = False
 
                 while not done:
-                    action = self.policy.get_action(torch.tensor(state, dtype = torch.float32), deterministic = True)
+                    action = self.det_action(torch.tensor(state, dtype = torch.float32), deterministic = True)
                     action = action.numpy()
                     next_state, reward, done, info = self.env.step(action)
 

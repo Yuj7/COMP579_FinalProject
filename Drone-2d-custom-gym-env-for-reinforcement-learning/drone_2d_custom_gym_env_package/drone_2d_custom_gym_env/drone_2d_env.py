@@ -149,14 +149,15 @@ class Drone2dEnv(gym.Env):
                 if self.wind_dir==3: #wind blow to right
                     self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(self.wind_mag,0),(-self.drone_radius,0))
                     self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(self.wind_mag,0),(self.drone_radius,0))
+
             if self.wind=="Random":
-                wind_mag_x_left_engine=random.rand() *self.wind_mag*2-self.wind_mag
-                wind_mag_y_left_engine=random.rand()*self.wind_mag*2-self.wind_mag
-                wind_mag_x_right_engine=random.rand() *self.wind_mag*2-self.wind_mag
-                wind_mag_y_right_engine=random.rand()*self.wind_mag*2-self.wind_mag
+                wind_mag_x_left_engine = np.random.rand() *self.wind_mag*2-self.wind_mag
+                wind_mag_y_left_engine = np.random.rand()*self.wind_mag*2-self.wind_mag
+                wind_mag_x_right_engine = np.random.rand() *self.wind_mag*2-self.wind_mag
+                wind_mag_y_right_engine = np.random.rand()*self.wind_mag*2-self.wind_mag
                 
                 self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(wind_mag_x_left_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
-                self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(wind_mag_x_right_engine,wind_mag_y_left_engine),(-self.drone_radius,0))
+                self.drone.frame_shape.body.apply_force_at_local_point(Vec2d(wind_mag_x_right_engine,wind_mag_y_right_engine),(self.drone_radius,0))
 
         if self.first_step is True:
             if self.render_sim is True and self.render_path is True: self.add_postion_to_drop_path()

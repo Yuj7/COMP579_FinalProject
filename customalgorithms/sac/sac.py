@@ -9,7 +9,7 @@ import copy
 
 import torch.nn.functional as F
 import torch
-# Run this at the very top of your script
+
 torch.set_num_threads(8)
 
 class ReplayBuffer:
@@ -24,19 +24,11 @@ class ReplayBuffer:
         self.actions = np.zeros((capacity, *act_dim), dtype=np.float32)
         self.rewards = np.zeros(capacity, dtype=np.float32)
         self.dones = np.zeros(capacity, dtype=np.float32)
-        
-
-
-
-
-
-
 
     def reset(self):
       self.ptr=0
       self.size_now=0
       
-
     def size(self):
       return self.size_now
 
@@ -46,10 +38,6 @@ class ReplayBuffer:
         self.rewards[self.ptr] = reward
         self.next_states[self.ptr] = next_state
         self.dones[self.ptr] = done
-
-       
-
-
 
         self.ptr = (self.ptr + 1) % self.capacity # use as cirular buffer
         self.size_now = min(self.size_now + 1, self.capacity) 
@@ -80,8 +68,6 @@ class QNetwork(nn.Module):
     def forward(self, obs, act):
         return self.net(torch.cat([obs, act], dim=-1))
     
-
-
 class GaussianActor(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_sizes=[256, 256], log_std_min=-20, log_std_max=2):
         super().__init__()
@@ -97,7 +83,7 @@ class GaussianActor(nn.Module):
         self.mean_layer = nn.Linear(hidden_sizes[1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[1], act_dim)
 
-    def forward(self, obs,deterministic=False,with_logprob=True):
+    def forward(self, obs, deterministic=False, with_logprob=True):
         #obtain mean and log std
         x = self.net(obs)
         mean = self.mean_layer(x)
@@ -110,13 +96,16 @@ class GaussianActor(nn.Module):
             u=mean
         else:
             u=dist.rsample() # reparameterization trick
-        
+        action=torch.tanh(u)
+
         if with_logprob:
             logp_pi=dist.log_prob(u).sum(axis=-1)
             #using tanh u directly leads to numerical instability, use identiy to rewrite log(1-tanh(u)^2) as log(1-tanh(u)^2)=log(1-u^2) to avoid numerical instability
             logp_pi-=(2*(np.log(2)-u-F.softplus(-2*u))).sum(axis=-1)
-        action=torch.tanh(u)
-        return action, logp_pi
+        
+            return action, logp_pi
+        else:
+            return action
 
 class SACAgent:
     def __init__(self,obs_dim,act_dim,gamma=0.99):
@@ -149,7 +138,6 @@ class SACAgent:
         next_states=data['obs2']
         dones=data['done'].view(-1, 1) # reshape to (batch_size, 1)
 
-        
         #target Q value,obtain bellman_target
         with torch.no_grad():
             next_actions,next_logp=self.actor(next_states)
@@ -175,8 +163,6 @@ class SACAgent:
     def compute_actor_loss(self,data):
         states=data['obs']
         actions,logp=self.actor(states)
-
-      
 
         q1_new=self.q1(states,actions)
         q2_new=self.q2(states,actions)

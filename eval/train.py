@@ -2,7 +2,7 @@ from pathlib import Path
 import gym
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import EvalCallback
-from ppo.ppo import CustomPPO
+from customalgorithms import CustomPPO, train_seed
 
 import drone_2d_custom_gym_env
 import numpy as np
@@ -20,7 +20,7 @@ class Algorithm(Enum):
     BaselineSAC = 'BaselineSAC'
 
 # Select the algorithm to train
-ALGO = Algorithm.CustomPPO
+ALGO = Algorithm.BaselineSAC
 
 # Select the environment case to train on
 CASE_ID = 1
@@ -59,10 +59,15 @@ def make_env(case_id):
 TIMESTEPS = 180000
 
 # Hyperparameters for Custom PPO
-# NB_EPISODES = 750
 EVAL_FREQ_STEPS = 2000
 NB_EVAL_EP = 10
 
+# Hyperparameters for Custom SAC
+REPLAYBUFFER_CAP = int(1e6)
+START_STEPS = 100
+UPDATE_AFTER = 100
+UPDATE_EVERY = 1
+BATCH_SIZE = 256
 
 if __name__ == "__main__":
     start_time = datetime.now()
@@ -76,7 +81,7 @@ if __name__ == "__main__":
         logger = Logger()
         try:
             if ALGO == Algorithm.BaselinePPO:
-                model = PPO("MlpPolicy", training_env, verbose = 1, ent_coef = 0.01)
+                model = PPO("MlpPolicy", training_env, verbose = 0, ent_coef = 0.01, learning_rate = 1e-4)
                 eval_callback = EvalCallback(
                     eval_env,
                     best_model_save_path = f"./models/{ALGO.value}_case{CASE_ID}_Seed{seed}",
@@ -84,14 +89,24 @@ if __name__ == "__main__":
                     eval_freq = EVAL_FREQ_STEPS, 
                     n_eval_episodes = NB_EVAL_EP, 
                     deterministic = True,
-                    render = False
+                    render = False,
+                    verbose = 1
                     )
                 model.learn(total_timesteps = TIMESTEPS, callback = eval_callback)
 
             elif ALGO == Algorithm.BaselineSAC:
-                model = SAC("MlpPolicy", training_env, verbose = 1)
-                model.learn(total_timesteps=TIMESTEPS)
-                # model.save(str(MODEL_DIR / f"{ALGO}_case{CASE_ID}"))
+                model = SAC("MlpPolicy", training_env, verbose = 0)
+                eval_callback = EvalCallback(
+                    eval_env,
+                    best_model_save_path = f"./models/{ALGO.value}_case{CASE_ID}_Seed{seed}",
+                    log_path = f"./logs/{ALGO.value}_case{CASE_ID}_Seed{seed}",
+                    eval_freq = EVAL_FREQ_STEPS, 
+                    n_eval_episodes = NB_EVAL_EP, 
+                    deterministic = True,
+                    render = False,
+                    verbose = 1
+                    )
+                model.learn(total_timesteps = TIMESTEPS, callback = eval_callback)
 
             elif ALGO == Algorithm.CustomPPO:
                 current_steps = 0
@@ -122,7 +137,20 @@ if __name__ == "__main__":
                 logger.log_to_file(ppo_agent.eval_avg_return, ppo_agent.eval_ep_lengths, ppo_agent.eval_successes, f'{ALGO.value}_Case{CASE_ID}_Seed{seed}')
 
             elif ALGO == Algorithm.CustomSAC:
-                pass
+                history = train_seed(
+                    seed = seed,
+                    case_id = CASE_ID,
+                    algo = ALGO.value,
+                    training_env = training_env,
+                    eval_env = eval_env,
+                    buffer_capacity = REPLAYBUFFER_CAP,
+                    start_steps = START_STEPS,
+                    update_after = UPDATE_AFTER,
+                    batch_size = BATCH_SIZE,
+                    update_every = UPDATE_EVERY,
+                    total_steps = TIMESTEPS
+                )
+                logger.log_to_file(history['eval_returns'], history['eval_lengths'], history['eval_successes'], f'{ALGO.value}_Case{CASE_ID}_Seed{seed}')
             else:
                 raise ValueError(f"Unsupported algorithm: {ALGO}")
 

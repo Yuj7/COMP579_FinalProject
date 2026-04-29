@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 
-
 class PolicyNetwork(torch.nn.Module):
     def __init__(self, neurons_size : list[int], action_dim : int, state_dim : int) -> None:
         super(PolicyNetwork, self).__init__()
