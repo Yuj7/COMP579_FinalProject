@@ -21,7 +21,7 @@ class Evaluation():
                 ep_success = False
 
                 while not done:
-                    action = self.det_action(torch.tensor(state, dtype = torch.float32), deterministic = True)
+                    action = self.det_action(torch.tensor(state, dtype = torch.float32), deterministic = True) 
                     action = action.numpy()
                     next_state, reward, done, info = self.env.step(action)
 

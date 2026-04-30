@@ -83,7 +83,7 @@ class GaussianActor(nn.Module):
         self.mean_layer = nn.Linear(hidden_sizes[1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[1], act_dim)
 
-    def forward(self, obs, deterministic=False, with_logprob=True):
+    def forward(self, obs, deterministic=False, with_logprob=False):
         #obtain mean and log std
         x = self.net(obs)
         mean = self.mean_layer(x)
@@ -96,7 +96,7 @@ class GaussianActor(nn.Module):
             u=mean
         else:
             u=dist.rsample() # reparameterization trick
-        action=torch.tanh(u)
+        action = torch.tanh(u)
 
         if with_logprob:
             logp_pi=dist.log_prob(u).sum(axis=-1)
@@ -140,7 +140,7 @@ class SACAgent:
 
         #target Q value,obtain bellman_target
         with torch.no_grad():
-            next_actions,next_logp=self.actor(next_states)
+            next_actions,next_logp = self.actor(next_states, with_logprob = True)
             if next_logp.dim() == 1:#is actor returns logp with shape (batch_size,) , reshape to (batch_size,1)
                 next_logp = next_logp.view(-1, 1)
                 
@@ -162,7 +162,7 @@ class SACAgent:
     
     def compute_actor_loss(self,data):
         states=data['obs']
-        actions,logp=self.actor(states)
+        actions,logp=self.actor(states, with_logprob = True)
 
         q1_new=self.q1(states,actions)
         q2_new=self.q2(states,actions)
@@ -177,7 +177,7 @@ class SACAgent:
     def compute_alpha_loss(self,data,target_entropy):
         states=data['obs']
         with torch.no_grad():
-            actions,logp=self.actor(states)
+            actions,logp=self.actor(states, with_logprob = True)
 
         alpha_loss=-(self.log_alpha*(logp+target_entropy).detach()).mean()
 

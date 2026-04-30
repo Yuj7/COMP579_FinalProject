@@ -74,16 +74,17 @@ def train_seed(
             history['eval_successes'].append(successes)
         
             if np.mean(episodic_return) > current_best:
-                current_best = episodic_return
+                current_best = np.round(np.mean(episodic_return), 2)
             
             print(f'Current step: {t}, avg return: {np.round(np.mean(episodic_return), 2)}, best avg return: {current_best}')
+            last_eval_step = t
 
         if t < start_steps:
             action = training_env.action_space.sample()
         else:
             with torch.no_grad():
                 obs_tensor = torch.as_tensor(obs, dtype=torch.float32)
-                action, _ = agent.actor(obs_tensor)
+                action, _ = agent.actor(obs_tensor, with_logprob = True)
                 action = action.detach().numpy()
         
         step_result = training_env.step(action)

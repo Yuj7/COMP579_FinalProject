@@ -20,10 +20,10 @@ class Algorithm(Enum):
     BaselineSAC = 'BaselineSAC'
 
 # Select the algorithm to train
-ALGO = Algorithm.BaselineSAC
+ALGO = Algorithm.CustomSAC
 
 # Select the environment case to train on
-CASE_ID = 1
+CASE_ID = 2
 
 CASES = {
     1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind":None,"wind_magnitude":100.0},
@@ -56,7 +56,7 @@ def make_env(case_id):
         success_radius = 25.0
     )
 
-TIMESTEPS = 180000
+TIMESTEPS = 300000
 
 # Hyperparameters for Custom PPO
 EVAL_FREQ_STEPS = 2000
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         logger = Logger()
         try:
             if ALGO == Algorithm.BaselinePPO:
-                model = PPO("MlpPolicy", training_env, verbose = 0, ent_coef = 0.01, learning_rate = 1e-4)
+                model = PPO("MlpPolicy", training_env, verbose = 0, ent_coef = 0.01, learning_rate = 3e-4)
                 eval_callback = EvalCallback(
                     eval_env,
                     best_model_save_path = f"./models/{ALGO.value}_case{CASE_ID}_Seed{seed}",
@@ -148,7 +148,9 @@ if __name__ == "__main__":
                     update_after = UPDATE_AFTER,
                     batch_size = BATCH_SIZE,
                     update_every = UPDATE_EVERY,
-                    total_steps = TIMESTEPS
+                    total_steps = TIMESTEPS,
+                    eval_freq = EVAL_FREQ_STEPS,
+                    nb_eval_episodes = NB_EVAL_EP
                 )
                 logger.log_to_file(history['eval_returns'], history['eval_lengths'], history['eval_successes'], f'{ALGO.value}_Case{CASE_ID}_Seed{seed}')
             else:
