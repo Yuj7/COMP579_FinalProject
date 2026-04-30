@@ -23,7 +23,7 @@ class Algorithm(Enum):
 ALGO = Algorithm.CustomSAC
 
 # Select the environment case to train on
-CASE_ID = 2
+CASE_ID = 3
 
 CASES = {
     1: {"initial_throw": True, "initial_force": 5000, "initial_rotation_force": 600,"wind":None,"wind_magnitude":100.0},
@@ -56,7 +56,7 @@ def make_env(case_id):
         success_radius = 25.0
     )
 
-TIMESTEPS = 300000
+TIMESTEPS = 400000
 
 # Hyperparameters for Custom PPO
 EVAL_FREQ_STEPS = 2000
